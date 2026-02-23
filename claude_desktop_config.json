@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "openscad-mcp": {
+      "command": "uvx",
+      "args": ["--from", "openscad-mcp", "openscad-mcp"],
+      "env": {
+        "OPENSCAD_BINARY": "/usr/bin/openscad"
+      }
+    }
+  }
+}

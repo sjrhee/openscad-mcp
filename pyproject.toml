@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openscad-mcp"
+version = "0.1.0"
+description = "MCP server for OpenSCAD 3D model rendering"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+]
+
+[project.scripts]
+openscad-mcp = "openscad_mcp.server:main"
+openscad-web = "openscad_mcp.web_api:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

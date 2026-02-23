@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fastapi-backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "openscad_mcp.web_api"],
+      "port": 8000
+    },
+    {
+      "name": "vite-frontend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["web/node_modules/vite/bin/vite.js", "--config", "web/vite.config.js"],
+      "port": 3000,
+      "autoPort": false
+    }
+  ]
+}

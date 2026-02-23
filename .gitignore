@@ -1,0 +1,26 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Node
+web/node_modules/
+web/dist/
+
+# Vite
+.vite/
+
+# Rendered outputs (generated, not source)
+data/*.stl
+data/*.png
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local Claude settings
+.claude/settings.local.json

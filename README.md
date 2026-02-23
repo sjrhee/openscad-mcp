@@ -126,13 +126,79 @@ curl -X POST http://localhost:8000/api/render/stl \
 
 ---
 
-## MCP 서버
+## MCP 서버 연동
 
-Claude Desktop 등 MCP 클라이언트와 연동:
+`stdio` 기반 MCP 서버로, MCP를 지원하는 모든 AI 클라이언트에서 사용 가능합니다.
 
-```bash
-.venv/Scripts/python -m openscad_mcp.server
+### 지원 도구
+
+| 도구 | 설명 |
+|------|------|
+| `render_preview` | `.scad` → PNG 렌더링 후 대화창에 이미지로 표시 |
+| `render_stl` | `.scad` → STL 파일 생성 |
+| `validate_scad` | `.scad` 문법 검사 |
+
+---
+
+### Claude Desktop
+
+`%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "openscad": {
+      "command": "D:/Work/openscad-mcp/.venv/Scripts/python",
+      "args": ["-m", "openscad_mcp.server"]
+    }
+  }
+}
 ```
+
+**명령 예시**
+```
+50mm에서 100mm로 전환되는 길이 150mm 파이프를 만들고 미리보기 보여줘
+data/my_pipe.scad 파일을 STL로 내보내줘
+data/model.scad 문법 검사해줘
+```
+
+---
+
+### OpenAI Codex CLI
+
+`~/.codex/config.toml`
+
+```toml
+[mcp_servers.openscad]
+command = "D:/Work/openscad-mcp/.venv/Scripts/python"
+args = ["-m", "openscad_mcp.server"]
+cwd = "D:/Work/openscad-mcp"
+```
+
+**명령 예시**
+```
+Create a pipe transitioning from 50mm to 100mm diameter, 150mm long, and preview it
+Export data/my_pipe.scad to STL
+```
+
+---
+
+### Cursor / VS Code / Windsurf
+
+`.cursor/mcp.json` 또는 `.vscode/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "openscad": {
+      "command": "D:/Work/openscad-mcp/.venv/Scripts/python",
+      "args": ["-m", "openscad_mcp.server"]
+    }
+  }
+}
+```
+
+> macOS/Linux는 `command`를 `D:/Work/openscad-mcp/.venv/bin/python` 으로 변경
 
 ---
 

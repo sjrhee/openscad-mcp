@@ -9,10 +9,11 @@ OpenSCAD 3D 모델을 생성·렌더링하고 웹 브라우저에서 인터랙�
 ## 주요 기능
 
 - `.scad` 파일을 받아 **PNG 미리보기** 또는 **STL** 로 렌더링
-- **Three.js 기반 3D 웹 뷰어** — 드래그 회전, 스크롤 줌
-- 품질 프리셋 — 빠른 웹 미리보기 / 고품질 STL 출력 분리
+- **Three.js 기반 3D 웹 뷰어** — 드래그 회전, 스크롤 줌, 동적 스케일 바, 바운딩 박스 치수
+- 품질 프리셋 — 빠른 웹 미리보기 / 고품질 PNG / 최종 STL 출력 분리
 - FastAPI REST API로 외부 연동 가능
 - MCP(Model Context Protocol) 서버 내장
+- `run.sh` 관리 스크립트로 설치/실행/종료 통합 관리
 
 ---
 
@@ -20,15 +21,19 @@ OpenSCAD 3D 모델을 생성·렌더링하고 웹 브라우저에서 인터랙�
 
 ```
 openscad-mcp/
-├── data/              # .scad 소스 및 렌더링 결과 (PNG, STL)
+├── run.sh                 # 프로젝트 관리 스크립트 (setup/start/stop/build)
+├── data/                  # .scad 소스 및 렌더링 결과 (PNG, STL)
+├── bin/                   # OpenSCAD AppImage + 번들 라이브러리
+│   ├── openscad           # 래퍼 스크립트
+│   └── OpenSCAD-x86_64.AppImage
 ├── src/openscad_mcp/
-│   ├── renderer.py    # OpenSCAD CLI 래퍼
-│   ├── web_api.py     # FastAPI 서버 (port 8000)
-│   └── server.py      # MCP 서버
-└── web/               # Vite + React 프론트엔드 (port 3000)
+│   ├── renderer.py        # OpenSCAD CLI 래퍼
+│   ├── web_api.py         # FastAPI 서버 (port 8000)
+│   └── server.py          # MCP 서버
+└── web/                   # Vite + React 프론트엔드 (port 3000)
     └── src/
-        ├── App.jsx
-        └── StlViewer.jsx
+        ├── App.jsx        # 메인 UI (파일 드롭다운, 버튼)
+        └── StlViewer.jsx  # Three.js 3D 뷰어 (스케일 바, 바운딩 박스)
 ```
 
 ---
@@ -37,54 +42,51 @@ openscad-mcp/
 
 | 항목 | 버전 |
 |------|------|
-| [OpenSCAD](https://openscad.org/downloads.html) | 2021.01+ |
 | Python | 3.10+ |
-| Node.js | 18+ |
+| Node.js | 18+ (nvm 사용 시 `nvm use 20`) |
+| [OpenSCAD](https://openscad.org/downloads.html) | 자동 설치 (AppImage) |
 
-> Windows 기본 설치 경로: `C:\Program Files\OpenSCAD\openscad.exe`
-> 다른 경로인 경우 환경 변수 `OPENSCAD_PATH` 로 지정
+> OpenSCAD는 `./run.sh setup` 실행 시 `bin/` 디렉토리에 자동 다운로드됩니다.
+> 다른 경로를 사용하려면 환경 변수 `OPENSCAD_PATH`로 지정하세요.
 
 ---
 
-## 설치
+## 설치 및 실행
 
 ```bash
 # 1. 저장소 클론
-git clone https://github.com/YOUR_USERNAME/openscad-mcp.git
+git clone https://github.com/your-username/openscad-mcp.git
 cd openscad-mcp
 
-# 2. Python 가상환경 생성 및 백엔드 설치
-python -m venv .venv
-.venv/Scripts/pip install -e .      # Windows
-# source .venv/bin/activate && pip install -e .  # macOS/Linux
+# 2. 환경 설정 (venv + 패키지 + OpenSCAD)
+./run.sh setup
 
-# 3. 프론트엔드 의존성 설치
-cd web && npm install && cd ..
-```
-
----
-
-## 실행
-
-```bash
-# 백엔드 (port 8000)
-.venv/Scripts/python -m openscad_mcp.web_api
-
-# 프론트엔드 (port 3000) — 별도 터미널
-cd web && npm run dev
+# 3. 서버 시작 (백엔드 8000 + 프론트엔드 3000)
+./run.sh start
 ```
 
 브라우저에서 `http://localhost:3000` 접속
+
+### 관리 명령어
+
+```bash
+./run.sh setup     # venv 생성, 패키지 설치, OpenSCAD 다운로드
+./run.sh start     # 백엔드 + 프론트엔드 시작
+./run.sh stop      # 모든 서버 종료
+./run.sh restart   # 재시작
+./run.sh status    # 서버 상태 확인
+./run.sh build     # 프론트엔드 프로덕션 빌드
+```
 
 ---
 
 ## 사용법
 
-1. 입력란에 `.scad` 파일 절대 경로 입력
-2. **3D View** — Three.js 인터랙티브 뷰어로 확인
-3. **Preview PNG** — 정적 PNG 렌더링
+1. 드롭다운에서 `.scad` 파일 선택 (새 파일은 드롭다운 클릭 시 자동 갱신)
+2. **3D View** — Three.js 인터랙티브 뷰어 (동적 스케일 바 + 바운딩 박스 치수)
+3. **Preview PNG** — 고품질 정적 PNG 렌더링
 4. **Validate** — 문법 검사
-5. **Download STL** — 고품질 STL 출력
+5. **Download STL** — 최종 STL 출력
 
 ---
 
@@ -93,7 +95,7 @@ cd web && npm run dev
 | 용도 | num_steps | $fn | 소요 시간 |
 |------|-----------|-----|-----------|
 | 3D View (웹) | 30 | 36 | ~5초 |
-| Preview PNG | 50 | 60 | ~20초 |
+| Preview PNG | 100 | 60 | ~30초 |
 | Download STL | 100 | 90 | ~1~2분 |
 
 ---
@@ -103,6 +105,7 @@ cd web && npm run dev
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | GET | `/api/health` | 서버 상태 확인 |
+| GET | `/api/files` | `data/` 내 .scad 파일 목록 |
 | POST | `/api/validate` | .scad 문법 검사 |
 | POST | `/api/render/png` | PNG 렌더링 |
 | POST | `/api/render/stl` | STL 렌더링 (`quality`: `preview` / `export`) |
@@ -122,7 +125,9 @@ curl -X POST http://localhost:8000/api/render/stl \
 | 파일 | 설명 |
 |------|------|
 | `circle_to_ellipse_transition_pipe.scad` | 원형 Ø50mm → 평타원 80×10mm, 길이 150mm |
-| `50_to_100_transition_pipe.scad` | 원형 Ø55mm → 원형 Ø100mm, 양끝 10mm 평탄, 길이 150mm |
+| `50_to_100_transition_pipe.scad` | 원형 Ø50mm → 원형 Ø100mm, 양끝 10mm 평탄, 길이 150mm |
+| `90deg_bent_pipe_30mm.scad` | Ø30mm 파이프, 90도 곡관, 벽 3mm, 곡률 60mm |
+| `simple_suv.scad` | 심플 SUV 자동차 모델 (100mm 스케일) |
 
 ---
 
@@ -142,13 +147,13 @@ curl -X POST http://localhost:8000/api/render/stl \
 
 ### Claude Desktop
 
-`%APPDATA%\Claude\claude_desktop_config.json`
+`~/.config/Claude/claude_desktop_config.json` (Linux) 또는 `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
 
 ```json
 {
   "mcpServers": {
     "openscad": {
-      "command": "D:/Work/openscad-mcp/.venv/Scripts/python",
+      "command": "/path/to/openscad-mcp/.venv/bin/python",
       "args": ["-m", "openscad_mcp.server"]
     }
   }
@@ -170,15 +175,9 @@ data/model.scad 문법 검사해줘
 
 ```toml
 [mcp_servers.openscad]
-command = "D:/Work/openscad-mcp/.venv/Scripts/python"
+command = "/path/to/openscad-mcp/.venv/bin/python"
 args = ["-m", "openscad_mcp.server"]
-cwd = "D:/Work/openscad-mcp"
-```
-
-**명령 예시**
-```
-Create a pipe transitioning from 50mm to 100mm diameter, 150mm long, and preview it
-Export data/my_pipe.scad to STL
+cwd = "/path/to/openscad-mcp"
 ```
 
 ---
@@ -191,14 +190,14 @@ Export data/my_pipe.scad to STL
 {
   "mcpServers": {
     "openscad": {
-      "command": "D:/Work/openscad-mcp/.venv/Scripts/python",
+      "command": "/path/to/openscad-mcp/.venv/bin/python",
       "args": ["-m", "openscad_mcp.server"]
     }
   }
 }
 ```
 
-> macOS/Linux는 `command`를 `D:/Work/openscad-mcp/.venv/bin/python` 으로 변경
+> Windows는 `.venv/bin/python`을 `.venv/Scripts/python`으로 변경
 
 ---
 

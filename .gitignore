@@ -26,5 +26,8 @@ Thumbs.db
 bin/OpenSCAD-x86_64.AppImage
 bin/lib/
 
+# Runtime (PIDs, logs)
+.run/
+
 # Local Claude settings
 .claude/settings.local.json

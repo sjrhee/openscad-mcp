@@ -4,20 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openscad-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for OpenSCAD 3D model rendering"
 requires-python = ">=3.10"
 dependencies = [
     "mcp[cli]",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
-    "anthropic>=0.40.0",
 ]
 
 [project.scripts]
 openscad-mcp = "openscad_mcp.server:main"
 openscad-web = "openscad_mcp.web_api:main"
-openscad-agent = "openscad_mcp.design_agent:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

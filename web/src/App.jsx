@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { validateScad, renderPng, agentStart, agentEvaluate, agentApply, agentStop } from './api/openscad'
+import { validateScad, renderPng } from './api/openscad'
 import { useFileWatcher } from './hooks/useFileWatcher'
 import StlViewer from './StlViewer'
 import './App.css'
@@ -17,15 +17,6 @@ function App() {
   const prevUrlRef = useRef(null)
   const prevStlRef = useRef(null)
 
-  // Agent state
-  const [agentSession, setAgentSession] = useState(null)
-  const [agentResult, setAgentResult] = useState(null)
-  const [agentHistory, setAgentHistory] = useState([])
-  const [agentLoading, setAgentLoading] = useState(false)
-  const [agentFeedback, setAgentFeedback] = useState('')
-  const [agentMode, setAgentMode] = useState('review')
-  const [generateDesc, setGenerateDesc] = useState('')
-
   function refreshFiles() {
     fetch(`${API_BASE}/files`)
       .then(r => r.json())
@@ -35,7 +26,7 @@ function App() {
 
   useEffect(() => { refreshFiles() }, [])
 
-  const busy = loading !== null || agentLoading
+  const busy = loading !== null
 
   function updatePreview(url) {
     if (prevUrlRef.current && prevUrlRef.current.startsWith('blob:')) URL.revokeObjectURL(prevUrlRef.current)
@@ -162,105 +153,6 @@ function App() {
     }
   }
 
-  // --- Agent handlers ---
-
-  async function handleAgentStart() {
-    setAgentLoading(true)
-    setStatus(null)
-    setAgentResult(null)
-    setAgentHistory([])
-    try {
-      let result
-      if (agentMode === 'generate') {
-        if (!generateDesc.trim()) return
-        result = await agentStart('', 'generate', generateDesc)
-        setScadFile(result.scad_file)
-        refreshFiles()
-      } else {
-        if (!scadFile.trim()) return
-        result = await agentStart(scadFile)
-      }
-      setAgentSession(result)
-      const evalResult = await agentEvaluate(result.session_id)
-      setAgentResult(evalResult)
-      setAgentHistory(evalResult.history)
-      updatePreview(`data:image/png;base64,${evalResult.preview_base64}`)
-      setViewMode('png')
-    } catch (e) {
-      setStatus({ type: 'error', message: e.message })
-    } finally {
-      setAgentLoading(false)
-    }
-  }
-
-  async function handleAgentApplyAction() {
-    if (!agentSession) return
-    setAgentLoading(true)
-    try {
-      await agentApply(agentSession.session_id)
-      setStatus({ type: 'success', message: 'Code applied. Evaluating next iteration...' })
-      const evalResult = await agentEvaluate(agentSession.session_id)
-      setAgentResult(evalResult)
-      setAgentHistory(evalResult.history)
-      updatePreview(`data:image/png;base64,${evalResult.preview_base64}`)
-      setViewMode('png')
-    } catch (e) {
-      setStatus({ type: 'error', message: e.message })
-    } finally {
-      setAgentLoading(false)
-    }
-  }
-
-  async function handleAgentSkip() {
-    if (!agentSession) return
-    setAgentLoading(true)
-    try {
-      const evalResult = await agentEvaluate(agentSession.session_id)
-      setAgentResult(evalResult)
-      setAgentHistory(evalResult.history)
-      updatePreview(`data:image/png;base64,${evalResult.preview_base64}`)
-      setViewMode('png')
-    } catch (e) {
-      setStatus({ type: 'error', message: e.message })
-    } finally {
-      setAgentLoading(false)
-    }
-  }
-
-  async function handleAgentFeedback() {
-    if (!agentSession || !agentFeedback.trim()) return
-    setAgentLoading(true)
-    try {
-      const evalResult = await agentEvaluate(agentSession.session_id, agentFeedback)
-      setAgentResult(evalResult)
-      setAgentHistory(evalResult.history)
-      setAgentFeedback('')
-      updatePreview(`data:image/png;base64,${evalResult.preview_base64}`)
-      setViewMode('png')
-    } catch (e) {
-      setStatus({ type: 'error', message: e.message })
-    } finally {
-      setAgentLoading(false)
-    }
-  }
-
-  async function handleAgentStopAction() {
-    if (!agentSession) return
-    try {
-      await agentStop(agentSession.session_id)
-    } catch { /* ignore cleanup errors */ }
-    setAgentSession(null)
-    setAgentResult(null)
-    setAgentHistory([])
-    setAgentFeedback('')
-  }
-
-  function scoreClass(score) {
-    if (score >= 8) return 'good'
-    if (score >= 5) return 'fair'
-    return 'poor'
-  }
-
   return (
     <div className="app">
       <h1>OpenSCAD Viewer</h1>
@@ -278,28 +170,6 @@ function App() {
         </select>
       </div>
 
-      {/* Agent mode selector */}
-      {!agentSession && (
-        <div className="agent-mode-selector">
-          <button className={`agent-tab ${agentMode === 'review' ? 'active' : ''}`} onClick={() => setAgentMode('review')}>
-            Review
-          </button>
-          <button className={`agent-tab ${agentMode === 'generate' ? 'active' : ''}`} onClick={() => setAgentMode('generate')}>
-            Generate
-          </button>
-          {agentMode === 'generate' && (
-            <input
-              className="generate-input"
-              type="text"
-              placeholder="Describe the 3D design..."
-              value={generateDesc}
-              onChange={(e) => setGenerateDesc(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !busy && handleAgentStart()}
-            />
-          )}
-        </div>
-      )}
-
       <div className="actions">
         <button className="btn-preview" disabled={busy || !scadFile.trim()} onClick={handlePreview}>
           {loading === 'preview' ? 'Rendering...' : 'Preview PNG'}
@@ -313,13 +183,6 @@ function App() {
         <button className="btn-stl" disabled={busy || !scadFile.trim()} onClick={handleDownloadStl}>
           {loading === 'export' ? 'Exporting HQ...' : 'Download STL'}
         </button>
-        <button
-          className="btn-review"
-          disabled={busy || (!scadFile.trim() && agentMode !== 'generate') || (agentMode === 'generate' && !generateDesc.trim())}
-          onClick={handleAgentStart}
-        >
-          {agentLoading && !agentResult ? 'Starting...' : agentSession ? 'Reviewing...' : 'AI Review'}
-        </button>
       </div>
 
       {status && (
@@ -330,108 +193,6 @@ function App() {
 
       {loading && (
         <div className="status loading">Processing...</div>
-      )}
-
-      {/* Agent Panel */}
-      {agentSession && (
-        <div className="agent-panel">
-          <div className="agent-header">
-            <h3>Design Agent {agentSession.mode === 'generate' ? '(Generate)' : '(Review)'}</h3>
-            <button className="btn-stop" onClick={handleAgentStopAction} disabled={agentLoading}>Stop</button>
-          </div>
-
-          {agentLoading && (
-            <div className="status loading">Evaluating with Claude... (~25 seconds)</div>
-          )}
-
-          {agentResult && !agentLoading && (
-            <>
-              <div className="agent-score">
-                <span className={`score-badge ${scoreClass(agentResult.score)}`}>
-                  {agentResult.score}/10
-                </span>
-                <span className="score-summary">{agentResult.summary}</span>
-              </div>
-
-              {agentResult.criteria_scores && Object.keys(agentResult.criteria_scores).length > 0 && (
-                <div className="agent-criteria">
-                  {Object.entries(agentResult.criteria_scores).map(([key, val]) => (
-                    <div key={key} className="criterion">
-                      <span className="criterion-name">{key.replace(/_/g, ' ')}</span>
-                      <div className="criterion-bar">
-                        <div className="criterion-fill" style={{ width: `${val * 10}%` }} />
-                      </div>
-                      <span className="criterion-score">{val}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {agentResult.issues.length > 0 && (
-                <div className="agent-issues">
-                  <h4>Issues</h4>
-                  <ul>
-                    {agentResult.issues.map((issue, i) => <li key={i}>{issue}</li>)}
-                  </ul>
-                </div>
-              )}
-
-              {!agentResult.converged && (
-                <div className="agent-actions">
-                  {agentResult.has_suggested_code && (
-                    <button className="btn-apply" disabled={agentLoading} onClick={handleAgentApplyAction}>
-                      Apply Changes
-                    </button>
-                  )}
-                  <button className="btn-skip" disabled={agentLoading} onClick={handleAgentSkip}>
-                    Skip
-                  </button>
-                </div>
-              )}
-
-              {agentResult.converged && (
-                <div className="status success">
-                  {agentResult.converge_reason === 'target_reached'
-                    ? `Target score reached (${agentResult.score}/10)`
-                    : agentResult.converge_reason === 'stagnant'
-                      ? 'Score stagnant — no further improvement'
-                      : 'No further improvement possible'}
-                </div>
-              )}
-
-              {!agentResult.converged && (
-                <div className="agent-feedback">
-                  <textarea
-                    placeholder="Enter feedback for next evaluation..."
-                    value={agentFeedback}
-                    onChange={(e) => setAgentFeedback(e.target.value)}
-                    rows={2}
-                  />
-                  <button
-                    className="btn-feedback"
-                    disabled={agentLoading || !agentFeedback.trim()}
-                    onClick={handleAgentFeedback}
-                  >
-                    Send Feedback
-                  </button>
-                </div>
-              )}
-
-              {agentHistory.length > 1 && (
-                <div className="agent-history">
-                  <h4>Score Progression</h4>
-                  <div className="score-progression">
-                    {agentHistory.map((h, i) => (
-                      <span key={i} className={`history-score ${scoreClass(h.score)}`}>
-                        {h.score}{i < agentHistory.length - 1 && ' → '}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
       )}
 
       <div className="preview-area">

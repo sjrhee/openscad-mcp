@@ -21,19 +21,23 @@ OpenSCAD 3D 모델을 생성·렌더링하고 웹 브라우저에서 인터랙�
 
 ```
 openscad-mcp/
-├── run.sh                 # 프로젝트 관리 스크립트 (setup/start/stop/build)
+├── run.sh                 # 프로젝트 관리 스크립트 (setup/start/dev/stop/build)
 ├── data/                  # .scad 소스 및 렌더링 결과 (PNG, STL)
 ├── bin/                   # OpenSCAD AppImage + 번들 라이브러리
 │   ├── openscad           # 래퍼 스크립트
 │   └── OpenSCAD-x86_64.AppImage
 ├── src/openscad_mcp/
 │   ├── renderer.py        # OpenSCAD CLI 래퍼
-│   ├── web_api.py         # FastAPI 서버 (port 8000)
+│   ├── web_api.py         # FastAPI 서버 (REST API + 정적 파일 서빙)
 │   └── server.py          # MCP 서버
-└── web/                   # Vite + React 프론트엔드 (port 3000)
+└── web/                   # React 프론트엔드
+    ├── vite.config.js     # Vite 설정 (dev 프록시 포함)
+    ├── dist/              # 프로덕션 빌드 출력
     └── src/
         ├── App.jsx        # 메인 UI (파일 드롭다운, 버튼)
-        └── StlViewer.jsx  # Three.js 3D 뷰어 (스케일 바, 바운딩 박스)
+        ├── StlViewer.jsx  # Three.js 3D 뷰어 (스케일 바, 바운딩 박스)
+        ├── api/openscad.js        # HTTP 클라이언트 (API 호출 래퍼)
+        └── hooks/useFileWatcher.js  # 파일 변경 감지 (2초 폴링)
 ```
 
 ---
@@ -61,18 +65,19 @@ cd openscad-mcp
 # 2. 환경 설정 (venv + 패키지 + OpenSCAD)
 ./run.sh setup
 
-# 3. 서버 시작 (백엔드 8000 + 프론트엔드 3000)
+# 3. 서버 시작 (프론트엔드 빌드 + 단일 서버 8000)
 ./run.sh start
 ```
 
-브라우저에서 `http://localhost:3000` 접속
+브라우저에서 `http://localhost:8000` 접속
 
 ### 관리 명령어
 
 ```bash
 ./run.sh setup     # venv 생성, 패키지 설치, OpenSCAD 다운로드
-./run.sh start     # 백엔드 + 프론트엔드 시작
+./run.sh start     # 프론트엔드 빌드 + 서버 시작 (port 8000)
 ./run.sh stop      # 모든 서버 종료
+./run.sh dev       # 개발 모드: 백엔드(8000) + Vite HMR(3000)
 ./run.sh restart   # 재시작
 ./run.sh status    # 서버 상태 확인
 ./run.sh build     # 프론트엔드 프로덕션 빌드
@@ -106,6 +111,7 @@ cd openscad-mcp
 |--------|------|------|
 | GET | `/api/health` | 서버 상태 확인 |
 | GET | `/api/files` | `data/` 내 .scad 파일 목록 |
+| GET | `/api/files/status` | 파일별 수정 시각 (변경 감지 폴링) |
 | POST | `/api/validate` | .scad 문법 검사 |
 | POST | `/api/render/png` | PNG 렌더링 |
 | POST | `/api/render/stl` | STL 렌더링 (`quality`: `preview` / `export`) |
@@ -128,6 +134,11 @@ curl -X POST http://localhost:8000/api/render/stl \
 | `50_to_100_transition_pipe.scad` | 원형 Ø50mm → 원형 Ø100mm, 양끝 10mm 평탄, 길이 150mm |
 | `90deg_bent_pipe_30mm.scad` | Ø30mm 파이프, 90도 곡관, 벽 3mm, 곡률 60mm |
 | `simple_suv.scad` | 심플 SUV 자동차 모델 (100mm 스케일) |
+| `simple_car_basic.scad` | 심플 세단 모델 |
+| `simple_truck_basic.scad` | 심플 트럭 모델 |
+| `simple_laptop.scad` | 노트북 모델 |
+| `simple_game_controller.scad` | 게임 컨트롤러 모델 |
+| `simple_zippo_lighter.scad` | 지포 라이터 모델 |
 
 ---
 

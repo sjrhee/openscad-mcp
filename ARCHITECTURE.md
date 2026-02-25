@@ -3,51 +3,80 @@
 ## 시스템 개요
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        사용자                                    │
-│            브라우저 (localhost:3000)  /  터미널 CLI               │
-└──────────┬──────────────────────────────────┬───────────────────┘
-           │ HTTP                              │ stdin/stdout
-           ▼                                   ▼
-┌─────────────────────┐             ┌─────────────────────┐
-│   Web UI (React)    │             │   MCP Server        │
-│   port 3000         │             │   stdio transport    │
-│                     │             │                     │
-│ App.jsx             │             │ server.py           │
-│ StlViewer.jsx       │             │ 3개 tool 노출       │
-│ api/openscad.js     │             └──────────┬──────────┘
-│ hooks/useFileWatcher│                        │
-└──────────┬──────────┘                        │
-           │ REST API (/api/*)                 │
-           ▼                                   │
-┌──────────────────────────────────────────────┤
-│          Web API (FastAPI)                   │
-│          port 8000                           │
+┌─────────────────────────────────────────────────────────┐
+│                        사용자                            │
+│      브라우저 (localhost:8000)  /  터미널 CLI             │
+└──────────┬──────────────────────────────┬───────────────┘
+           │ HTTP                          │ stdin/stdout
+           ▼                               ▼
+┌─────────────────────┐         ┌─────────────────────┐
+│   FastAPI Server    │         │   MCP Server        │
+│   port 8000         │         │   stdio transport    │
+│                     │         │                     │
+│  web_api.py         │         │ server.py           │
+│  ├── /api/*  (REST) │         │ 3개 tool 노출       │
+│  └── /*     (React) │         └──────────┬──────────┘
+└──────────┬──────────┘                    │
+           │                               │
+           ▼                               ▼
+┌──────────────────────────────────────────────┐
+│          Renderer                            │
+│          renderer.py                         │
 │                                              │
-│  web_api.py                                  │
-│  ├── 렌더링 엔드포인트 (/render/png, /stl)  │
-│  ├── 파일 관리 (/files, /files/status)       │
-│  └── 에이전트 세션 (/agent/*)                │
-└──────────┬──────────────┬────────────────────┘
-           │              │
-           ▼              ▼
-┌────────────────┐  ┌──────────────────────┐
-│  Renderer      │  │  Design Agent        │
-│  renderer.py   │  │  design_agent.py     │
-│                │  │                      │
-│  .scad → PNG   │  │  평가 루프           │
-│  .scad → STL   │  │  코드 생성/개선      │
-│  .scad 검증    │  │  수렴 판정           │
-└───────┬────────┘  └──────────┬───────────┘
-        │                      │
-        ▼                      ▼
-┌────────────────┐  ┌──────────────────────┐
-│  OpenSCAD CLI  │  │  Claude API (LLM)    │
-│  bin/openscad  │  │  Anthropic SDK       │
-│                │  │                      │
-│  CSG 렌더링    │  │  비전 평가 (PNG)     │
-│  엔진          │  │  코드 생성 (텍스트)  │
-└────────────────┘  └──────────────────────┘
+│  .scad → PNG / STL / Validate                │
+└──────────────────┬───────────────────────────┘
+                   │ subprocess
+                   ▼
+┌────────────────────────┐
+│  OpenSCAD CLI          │
+│  bin/openscad          │
+│  (AppImage + 번들 GL)  │
+└────────────────────────┘
+```
+
+**프로덕션 모드**: FastAPI가 API(`/api/*`)와 React 빌드 정적 파일(`/*`)을 단일 포트(8000)에서 서빙.
+
+**개발 모드**: Vite dev server(3000, HMR) + FastAPI(8000). Vite가 `/api/*`를 8000으로 프록시.
+
+---
+
+## 디렉토리 구조
+
+```
+openscad-mcp/
+├── run.sh                          # 프로젝트 관리 스크립트
+├── ARCHITECTURE.md                 # 시스템 아키텍처 문서 (이 파일)
+├── CLAUDE.md                       # AI 어시스턴트 지침
+├── pyproject.toml                  # Python 패키지 설정
+├── data/                           # .scad 디자인 파일 및 렌더링 결과물
+│   ├── *.scad                      # OpenSCAD 디자인 소스
+│   ├── *_preview.png               # 렌더링된 PNG 미리보기
+│   └── *.stl                       # 3D 프린팅용 STL
+├── bin/                            # OpenSCAD 실행 환경
+│   ├── openscad                    # 래퍼 스크립트 (LD_LIBRARY_PATH 설정)
+│   ├── OpenSCAD-x86_64.AppImage    # OpenSCAD 바이너리
+│   └── lib/                        # 번들된 OpenGL 라이브러리
+├── src/openscad_mcp/
+│   ├── __init__.py
+│   ├── renderer.py                 # OpenSCAD CLI 래퍼 (162행)
+│   ├── web_api.py                  # FastAPI 서버 (152행)
+│   └── server.py                   # MCP 서버 (108행)
+├── web/                            # Vite + React 프론트엔드
+│   ├── vite.config.js              # Vite 설정 (프록시 포함)
+│   ├── package.json                # Node.js 의존성
+│   ├── dist/                       # 프로덕션 빌드 출력
+│   └── src/
+│       ├── main.jsx                # React 진입점
+│       ├── App.jsx                 # 메인 UI 컴포넌트 (212행)
+│       ├── App.css                 # 앱 스타일 (98행)
+│       ├── StlViewer.jsx           # Three.js 3D 뷰어 (185행)
+│       ├── index.css               # 글로벌 스타일
+│       ├── api/
+│       │   └── openscad.js         # HTTP 클라이언트 (48행)
+│       └── hooks/
+│           └── useFileWatcher.js   # 파일 변경 감지 훅 (54행)
+├── .run/                           # 런타임 (PID, 로그) — gitignored
+└── .claude/launch.json             # MCP 서버 실행 설정
 ```
 
 ---
@@ -56,71 +85,172 @@
 
 ### 1. Web UI (React + Vite)
 
-| 파일 | 역할 |
-|------|------|
-| `web/src/App.jsx` | 메인 UI — 파일 선택, 렌더링 버튼, 에이전트 패널 |
-| `web/src/StlViewer.jsx` | Three.js 3D 뷰어 — OrbitControls, 스케일 바, 바운딩 박스 |
-| `web/src/api/openscad.js` | HTTP 클라이언트 — 백엔드 REST API 호출 래퍼 |
-| `web/src/hooks/useFileWatcher.js` | 파일 변경 감지 — 2초 폴링, 자동 갱신 트리거 |
-| `web/src/App.css` | 스타일 — 에이전트 패널, 점수 배지, 기준 바 등 |
+#### App.jsx — 메인 UI
 
-**역할**: 사용자 인터페이스. 파일 선택, 렌더링 요청, 에이전트 대화형 제어(시작/적용/피드백/중지).
+**상태 관리:**
+
+| State | 타입 | 역할 |
+|-------|------|------|
+| `scadFile` | `string` | 선택된 .scad 파일 경로 |
+| `fileList` | `{name, path}[]` | 드롭다운 파일 목록 |
+| `previewUrl` | `string \| null` | PNG blob URL |
+| `stlUrl` | `string \| null` | STL blob URL |
+| `viewMode` | `'png' \| '3d'` | 현재 뷰 모드 |
+| `status` | `{type, message} \| null` | 상태 메시지 (success/error) |
+| `loading` | `string \| null` | 로딩 상태 (`'preview'`, `'3d'`, `'validate'`, `'export'`) |
+
+**핸들러:**
+
+| 함수 | 트리거 | 동작 |
+|------|--------|------|
+| `handlePreview()` | Preview PNG 버튼 | `renderPng()` → blob URL → `<img>` 표시 |
+| `handle3DView()` | 3D View 버튼 | `fetchStl('preview')` → blob URL → `<StlViewer>` 표시 |
+| `handleValidate()` | Validate 버튼 | `validateScad()` → 결과 status 표시 |
+| `handleDownloadStl()` | Download STL 버튼 | `fetchStl('export')` → `<a>` 다운로드 트리거 |
+| `refreshFiles()` | 마운트 시 + 드롭다운 포커스 시 | `GET /api/files` → 목록 갱신 |
+
+**자동 갱신**: `useFileWatcher`로 현재 선택된 파일의 mtime 변경 감지 → `autoRefreshRef` 콜백 호출 → 현재 뷰 모드에 맞춰 자동 리렌더.
+
+**UI 구성**: 파일 드롭다운(`<select>`) → 4개 액션 버튼 → 상태 메시지 → 프리뷰 영역(PNG `<img>` 또는 `<StlViewer>`).
+
+#### StlViewer.jsx — Three.js 3D 뷰어
+
+Props: `{ stlUrl: string }`
+
+**Three.js 씬 구성:**
+
+| 항목 | 설정 |
+|------|------|
+| 카메라 | `PerspectiveCamera(fov:45, near:0.1, far:10000)` |
+| 배경 | `0xf5f5dc` (beige) |
+| 조명 | `AmbientLight(0x404040, 2)` + `DirectionalLight(0xffffff, 2)` + `DirectionalLight(0xffffff, 1)` |
+| 머티리얼 | `MeshPhongMaterial(color:0xb8a000, specular:0x333333, shininess:40)` (gold) |
+| 캔버스 높이 | 500px 고정 |
+| 인터랙션 | `OrbitControls` (damping 활성화) |
+
+**STL 로딩 과정**: `fetch(stlUrl)` → `ArrayBuffer` → `STLLoader.parse()` → `computeVertexNormals()` → mesh 생성 → `computeBoundingBox()` → 모델 중심 이동(`position.sub(center)`) → 카메라 자동 피팅(`position(0, -maxDim*1.5, maxDim)`).
+
+**오버레이:**
+- **스케일 바 (좌하단)**: 카메라 거리 기반 mm/px 계산 → ~120px 타겟 → nice round number 선택 (`[1,2,5,10,20,50,100,200,500,1000]`). 매 프레임 갱신.
+- **바운딩 박스 (우하단)**: `X × Y × Z mm` 치수 표시 (소수점 1자리).
+
+#### api/openscad.js — HTTP 클라이언트
+
+| 함수 | HTTP | 반환 | 비고 |
+|------|------|------|------|
+| `validateScad(scadFile)` | `POST /api/validate` | `{success, message}` | |
+| `renderPng(scadFile, w?, h?)` | `POST /api/render/png` | blob URL | `URL.createObjectURL()` |
+| `renderStl(scadFile)` | `POST /api/render/stl` | (다운로드 트리거) | App.jsx에서 미사용, 내부 `fetchStl` 사용 |
+
+#### hooks/useFileWatcher.js — 파일 변경 감지
+
+```
+useFileWatcher({ enabled, interval=2000, onChange, onNewFiles })
+```
+
+| 파라미터 | 타입 | 역할 |
+|----------|------|------|
+| `enabled` | `boolean` | 로딩 중일 때 비활성화 |
+| `interval` | `number` | 폴링 간격 (ms, 기본 2000) |
+| `onChange` | `(changedFiles: string[]) => void` | 기존 파일 mtime 변경 시 |
+| `onNewFiles` | `(addedFiles: string[]) => void` | 새 파일 추가 시 |
+
+**동작**: `GET /api/files/status` 폴링 → `{파일명: mtime}` 맵 비교 → 변경/추가 감지. 백엔드 미접속 시 무시.
+
+---
 
 ### 2. Web API (FastAPI)
 
-| 파일 | 역할 |
-|------|------|
-| `src/openscad_mcp/web_api.py` | FastAPI 서버 — 렌더링 + 에이전트 세션 관리 |
+**파일**: `src/openscad_mcp/web_api.py` (152행)
 
-**역할**: 프론트엔드와 백엔드 로직 사이의 REST 게이트웨이. 에이전트 세션을 인메모리로 유지하고, 렌더링 요청을 Renderer에 위임.
+**앱 설정:**
+- `FastAPI(title="OpenSCAD Web API", version="0.2.0")`
+- CORS: `http://localhost:3000`, `http://127.0.0.1:3000` 허용
+- 데이터 디렉토리: `PROJECT_ROOT / "data"`
+- 정적 파일: `DIST_DIR = PROJECT_ROOT / "web" / "dist"` — 디렉토리 존재 시 `StaticFiles(html=True)`로 마운트
+
+**Pydantic 요청 모델:**
+
+| 모델 | 필드 |
+|------|------|
+| `ValidateRequest` | `scad_file: str` |
+| `RenderPngRequest` | `scad_file: str`, `width: int = 1024`, `height: int = 768` |
+| `RenderStlRequest` | `scad_file: str`, `quality: str = "preview"` |
+
+**품질 프리셋 (OpenSCAD 변수 오버라이드):**
+
+| 상수 | 값 | 용도 |
+|------|-----|------|
+| `QUALITY_3D` | `{num_steps:30, $fn:36}` | 3D View (빠른 STL, ~5초) |
+| `QUALITY_PNG` | `{num_steps:100, $fn:60}` | PNG 미리보기 (~30초) |
+| `QUALITY_EXPORT` | `{num_steps:100, $fn:90}` | 고품질 STL 다운로드 (~1-2분) |
+
+**임시 파일 정리**: `FileResponse`에 `BackgroundTask`로 전송 완료 후 자동 삭제.
+
+---
 
 ### 3. Renderer
 
-| 파일 | 역할 |
-|------|------|
-| `src/openscad_mcp/renderer.py` | OpenSCAD CLI 래퍼 — subprocess로 실행 |
+**파일**: `src/openscad_mcp/renderer.py` (162행)
 
-**역할**: `.scad` 파일을 OpenSCAD CLI에 전달하여 PNG/STL로 변환. 품질 프리셋별 변수 오버라이드(`$fn`, `num_steps`) 지원.
+**데이터 모델:**
 
-### 4. Design Agent
+```python
+@dataclass
+class RenderResult:
+    success: bool
+    output_path: str | None = None
+    file_size: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+```
 
-| 파일 | 역할 |
-|------|------|
-| `src/openscad_mcp/design_agent.py` | 평가 루프, 프롬프트, Claude API 호출, 파싱 |
+**함수:**
 
-**역할**: Claude 비전 API를 사용하여 렌더된 이미지 + 소스코드를 평가하고, 개선된 코드를 제안하는 반복 루프. CLI와 웹 API 양쪽에서 사용.
+| 함수 | 시그니처 | 역할 |
+|------|----------|------|
+| `render_to_png()` | `(scad_file, output_path?, width=1024, height=768, overrides?)` | PNG 렌더링. `--autocenter --viewall --imgsize` 플래그 사용. 출력 미지정 시 temp 파일 생성. |
+| `render_to_stl()` | `(scad_file, output_path?, overrides?)` | STL 렌더링. 출력 미지정 시 `.scad`와 같은 경로에 `.stl` 생성. |
+| `validate()` | `(scad_file)` | 구문 검사. temp STL 렌더(30초 타임아웃) 후 삭제. |
+| `_run_openscad()` | `(args, timeout=RENDER_TIMEOUT)` | subprocess 실행. `FileNotFoundError`, `TimeoutExpired` 처리. |
+| `_build_overrides()` | `(overrides)` | `dict → -D flag` 목록 변환. |
 
-### 5. MCP Server
+**환경 변수:**
 
-| 파일 | 역할 |
-|------|------|
-| `src/openscad_mcp/server.py` | MCP 프로토콜 서버 (stdio transport) |
+| 변수 | 기본값 | 역할 |
+|------|--------|------|
+| `OPENSCAD_PATH` | `bin/openscad` (프로젝트 상대 경로) | OpenSCAD 실행 파일 경로 |
+| `OPENSCAD_TIMEOUT` | `600` (초) | 렌더링 타임아웃 |
 
-**역할**: Claude Desktop 등 외부 AI 클라이언트가 OpenSCAD 렌더링을 MCP tool로 호출할 수 있게 노출. 웹 UI와는 독립적으로 동작.
+---
 
-### 6. Claude API (LLM)
+### 4. MCP Server
 
-**역할**: Design Agent의 두뇌. 두 가지 모드로 사용됨:
-- **비전 평가**: 렌더된 PNG 이미지 + .scad 소스코드를 보고 품질 점수, 이슈, 개선 코드를 JSON으로 반환
-- **코드 생성**: 텍스트 설명으로부터 초기 .scad 코드를 생성
+**파일**: `src/openscad_mcp/server.py` (108행)
+
+`FastMCP("openscad-mcp")` — stdio transport
+
+| Tool | 시그니처 | 반환 타입 | 동작 |
+|------|----------|-----------|------|
+| `render_preview` | `(scad_file, width=1024, height=768)` | `list[dict]` | PNG 렌더 → base64 인코딩 → `[{type:"image", data, mimeType}, {type:"text", text}]`. temp 파일 정리. |
+| `render_stl` | `(scad_file, output_path="")` | `str` | STL 렌더 → 성공 메시지(경로, 크기) 또는 실패 메시지. |
+| `validate_scad` | `(scad_file)` | `str` | 구문 검사 → "Syntax is valid." + WARNING 필터링, 또는 에러 메시지. |
+
+---
+
+### 5. OpenSCAD CLI
+
+CSG(Constructive Solid Geometry) 렌더링 엔진. `.scad` 스크립트를 읽어 PNG/STL로 출력.
 
 | 항목 | 값 |
 |------|-----|
-| 모델 | `claude-opus-4-20250514` |
-| SDK | `anthropic` Python SDK |
-| max_tokens | 8192 |
-| 재시도 | 지수 백오프, 최대 3회 |
-| API 키 | `.env` 또는 환경변수 `ANTHROPIC_API_KEY` |
+| 실행 파일 | `bin/openscad` (AppImage 래퍼 스크립트) |
+| 바이너리 | `bin/OpenSCAD-x86_64.AppImage` |
+| GL 라이브러리 | `bin/lib/usr/lib/x86_64-linux-gnu/` |
+| 렌더 타임아웃 | 600초 (기본), `OPENSCAD_TIMEOUT` 환경변수로 변경 가능 |
+| 검증 타임아웃 | 30초 (고정) |
 
-### 7. OpenSCAD CLI
-
-**역할**: CSG(Constructive Solid Geometry) 렌더링 엔진. `.scad` 스크립트를 읽어 PNG 이미지 또는 STL 3D 모델로 출력.
-
-| 항목 | 값 |
-|------|-----|
-| 실행 파일 | `bin/openscad` (AppImage 래퍼) |
-| 라이브러리 | `bin/lib/` (번들된 OpenGL) |
-| 타임아웃 | 120초 |
+**래퍼 스크립트 (`bin/openscad`)**: `LD_LIBRARY_PATH`에 번들 GL 라이브러리 경로 추가 후 AppImage 실행.
 
 ---
 
@@ -132,270 +262,161 @@
 사용자: "Preview PNG" 클릭
   │
   ▼
-App.jsx → renderPng(scadFile)
+App.jsx handlePreview()
+  → loading='preview', status=null
+  │
+  ▼  renderPng(scadFile) — api/openscad.js
   │
   ▼  POST /api/render/png {scad_file, width:1024, height:768}
   │
-web_api.py → render_to_png(scad_file, overrides={num_steps:100, $fn:60})
+web_api.py api_render_png()
+  → asyncio.to_thread(render_to_png, ..., overrides=QUALITY_PNG)
   │
-  ▼  subprocess
+  ▼
+renderer.py render_to_png()
+  → bin/openscad --autocenter --viewall --imgsize=1024,768
+       -D'num_steps=100' -D'$fn=60' -o /tmp/openscad_preview_XXX.png input.scad
   │
-renderer.py → bin/openscad -D'$fn=60' -D'num_steps=100' -o /tmp/out.png input.scad
+  ▼  RenderResult{success, output_path, file_size}
   │
-  ▼  RenderResult{success, output_path}
-  │
-web_api.py → FileResponse(PNG 바이너리, 전송 후 삭제)
+web_api.py
+  → FileResponse(PNG, background=삭제 태스크)
   │
   ▼  blob
   │
-App.jsx → URL.createObjectURL(blob) → <img src={url}>
+App.jsx
+  → URL.createObjectURL(blob) → setPreviewUrl(url)
+  → viewMode='png' → <img src={url}>
 ```
 
-### 흐름 2: 에이전트 평가 (Review 모드)
+### 흐름 2: 3D 뷰어 (STL 미리보기)
 
 ```
-사용자: "AI Review" 클릭
+사용자: "3D View" 클릭
   │
   ▼
-App.jsx → agentStart(scadFile, 'review')
+App.jsx handle3DView()
+  → loading='3d', status=null
   │
-  ▼  POST /api/agent/start {scad_file, mode:"review"}
+  ▼  fetchStl('preview') — App.jsx 내부 함수
   │
-web_api.py
-  ├── 파일 읽기 → current_code
-  ├── AgentSession 생성 (uuid, messages=[], history=[])
-  └── 응답: {session_id, scad_file, mode}
+  ▼  POST /api/render/stl {scad_file, quality:"preview"}
   │
-  ▼
-App.jsx → agentEvaluate(session_id)
-  │
-  ▼  POST /api/agent/evaluate {session_id}
-  │
-web_api.py ─────────────────────────────────────────────────┐
-  │                                                          │
-  │ 1. 렌더링                                                │
-  ├──→ renderer.py → render_to_png(overrides=QUALITY_EVAL)   │
-  │    → OpenSCAD → /tmp/preview.png                         │
-  │    → image_to_base64(png) → "iVBOR..."                   │
-  │                                                          │
-  │ 2. Claude 호출                                           │
-  ├──→ messages에 추가:                                      │
-  │    user: [텍스트, PNG이미지(base64), .scad코드]          │
-  │                                                          │
-  ├──→ call_claude(SYSTEM_PROMPT, messages, model)           │
-  │    → anthropic.messages.create()                         │
-  │    → Claude 응답: ```json { score, issues, code } ```    │
-  │                                                          │
-  │ 3. 파싱                                                  │
-  ├──→ parse_evaluation(response_text)                       │
-  │    → EvalResult{score, criteria_scores, issues,          │
-  │                 suggested_code, stop_reason}              │
-  │                                                          │
-  │ 4. 세션 업데이트                                         │
-  ├──→ session.pending_code = suggested_code                 │
-  ├──→ session.history.append(record)                        │
-  ├──→ 수렴 판정 (점수 + 잔여 이슈)                         │
-  │                                                          │
-  └──→ 응답: {score, criteria_scores, issues,                │
-              has_suggested_code, preview_base64,             │
-              converged, history}                             │
-  │                                                          │
-  ▼                                                          │
-App.jsx                                                      │
-  ├── 점수 배지 (색상 코딩)                                  │
-  ├── 기준별 프로그레스 바                                    │
-  ├── 이슈 목록                                              │
-  ├── [Apply] / [Skip] / [Send Feedback] 버튼                │
-  └── 점수 이력 (4 → 7 → 9)                                 │
-       │                                                     │
-       ▼ 사용자 선택                                         │
-  ┌────┴─────────────────────────────────────────┐           │
-  │                                               │           │
-  │ [Apply Changes]                               │           │
-  │  → POST /api/agent/apply {session_id}         │           │
-  │  → apply_code(scad_path, pending_code)        │           │
-  │    → .scad.tmp 작성 → validate → rename       │           │
-  │  → session.current_code 갱신                  │           │
-  │  → 다시 agentEvaluate() ──────────────────────┼──→ 반복  │
-  │                                               │           │
-  │ [Skip]                                        │           │
-  │  → 코드 변경 없이 agentEvaluate() ───────────┼──→ 반복  │
-  │                                               │           │
-  │ [Send Feedback]                               │           │
-  │  → agentEvaluate(session_id, feedback) ───────┼──→ 반복  │
-  │    (사용자 피드백이 다음 메시지에 포함)        │           │
-  │                                               │           │
-  │ [Stop]                                        │           │
-  │  → POST /api/agent/stop {session_id}          │           │
-  │  → 세션 삭제, 패널 닫기                       │           │
-  └───────────────────────────────────────────────┘           │
-```
-
-### 흐름 3: 에이전트 생성 (Generate 모드)
-
-```
-사용자: Generate 탭 → "simple zippo lighter" 입력 → AI Review 클릭
-  │
-  ▼  POST /api/agent/start {mode:"generate", description:"simple zippo lighter"}
-  │
-web_api.py
-  ├── slug 생성: "simple_zippo_lighter" (한글은 UUID 폴백)
-  ├── generate_initial_code(client, description, model)
-  │     │
-  │     ▼  Claude API 호출 (GENERATE_SYSTEM_PROMPT)
-  │     │  user: "Create an OpenSCAD design for: simple zippo lighter"
-  │     │
-  │     ▼  Claude 응답: ```openscad ... ``` 블록
-  │     │
-  │     └── .scad 코드 추출
-  │
-  ├── apply_code(data/simple_zippo_lighter.scad, code)
-  │     → validate → 파일 저장
-  │
-  ├── AgentSession 생성
-  └── 응답: {session_id, scad_file, mode:"generate"}
+web_api.py api_render_stl()
+  → overrides = QUALITY_3D (num_steps:30, $fn:36)
+  → tempfile → asyncio.to_thread(render_to_stl, ..., overrides)
   │
   ▼
-  이후 Review 모드와 동일한 평가 루프 진행
+renderer.py render_to_stl()
+  → bin/openscad -D'num_steps=30' -D'$fn=36' -o /tmp/openscad_web_XXX.stl input.scad
+  │
+  ▼  FileResponse(STL, background=삭제 태스크)
+  │
+  ▼  blob → URL.createObjectURL()
+  │
+StlViewer.jsx
+  ├── fetch(stlUrl) → ArrayBuffer
+  ├── STLLoader.parse(buf)
+  ├── geometry.computeVertexNormals()
+  ├── MeshPhongMaterial(gold: 0xb8a000)
+  ├── computeBoundingBox() → center → camera fit
+  ├── OrbitControls (마우스 회전/줌)
+  ├── 스케일 바 (좌하단, 매 프레임 갱신)
+  └── 바운딩 박스 치수 (우하단)
 ```
 
-### 흐름 4: MCP Tool 호출 (외부 AI 연동)
+### 흐름 3: STL 다운로드 (고품질)
 
 ```
-Claude Desktop / AI 클라이언트
-  │
-  ▼  MCP tool call: render_preview(scad_file="data/suv.scad")
-  │
-server.py (stdio transport)
-  │
-  ├── renderer.py → render_to_png()
-  │     → OpenSCAD CLI → PNG 파일
-  │
-  ├── PNG → base64 인코딩
-  │
-  └── MCP 응답: [{type:"image", data:base64}, {type:"text", ...}]
+사용자: "Download STL" 클릭
   │
   ▼
-Claude가 렌더 이미지를 보고 분석/대화 가능
+App.jsx handleDownloadStl()
+  → loading='export', status=null
+  │
+  ▼  fetchStl('export')
+  │
+  ▼  POST /api/render/stl {scad_file, quality:"export"}
+  │
+web_api.py api_render_stl()
+  → overrides = QUALITY_EXPORT (num_steps:100, $fn:90)
+  → 렌더링 (~1-2분)
+  │
+  ▼  blob
+  │
+App.jsx
+  → URL.createObjectURL(blob)
+  → <a href={url} download="파일명.stl">.click()
+  → URL.revokeObjectURL(url)
 ```
 
-### 흐름 5: 파일 변경 자동 감지
+### 흐름 4: 파일 변경 자동 감지
 
 ```
 useFileWatcher (2초 간격 폴링)
   │
   ▼  GET /api/files/status
   │
-web_api.py → data/*.scad 의 mtime 반환
+web_api.py files_status()
+  → data/*.scad의 {name: mtime} 반환
   │
-  ▼  이전 mtime과 비교
+  ▼  prevRef와 비교
   │
-  ├── 변경된 파일 있음 → onChange(changedFiles)
-  │     → 현재 선택된 파일이면 자동 렌더링 갱신
+  ├── 기존 파일 mtime 변경 → onChange(changedFiles)
+  │     → 현재 선택 파일이면 autoRefreshRef.current()
+  │       → 현재 viewMode에 따라 handlePreview() 또는 handle3DView() 자동 호출
   │
-  └── 새 파일 있음 → onNewFiles()
-        → 파일 목록 드롭다운 갱신
+  └── 새 파일 추가 → onNewFiles(addedFiles)
+        → refreshFiles() → 드롭다운 갱신
+```
+
+### 흐름 5: MCP Tool 호출 (외부 AI 연동)
+
+```
+Claude Desktop / AI 클라이언트
+  │
+  ▼  MCP tool call: render_preview(scad_file="data/suv.scad")
+  │
+server.py (FastMCP, stdio transport)
+  │
+  ├── renderer.py render_to_png(scad_file)
+  │     → bin/openscad --autocenter --viewall → /tmp/openscad_preview_XXX.png
+  │
+  ├── png_path.read_bytes() → base64.standard_b64encode()
+  │
+  ├── temp 파일 삭제
+  │
+  └── 반환: [{type:"image", data:base64, mimeType:"image/png"},
+             {type:"text", text:"Preview of: ..."}]
+  │
+  ▼
+Claude가 렌더 이미지를 보고 분석/대화 가능
 ```
 
 ---
 
-## Claude API 호출 상세
+## API 엔드포인트
 
-### 시스템 프롬프트
-
-| 프롬프트 | 용도 | 핵심 원칙 |
-|----------|------|-----------|
-| `SYSTEM_PROMPT` | 평가 (Review/Evaluate) | "실루엣 우선, 디테일 나중". recognizability와 proportions에 2배 가중치 |
-| `GENERATE_SYSTEM_PROMPT` | 코드 생성 (Generate) | 아이코닉/기본 상태로 디자인. 내부 구조보다 외형 형태 우선 |
-
-### 멀티턴 대화 구조
-
-```
-session.messages = [
-  ── 반복 1 ──
-  {role: "user", content: [
-    {type: "text",  text: "이 디자인을 평가해주세요..."},
-    {type: "image", source: {type: "base64", data: "PNG데이터"}},
-    {type: "text",  text: "현재 코드:\n```openscad\n...\n```"}
-  ]},
-  {role: "assistant", content: "```json\n{score:5, issues:[...], suggested_code:\"...\"}\n```"},
-
-  ── 반복 2 ──
-  {role: "user", content: [
-    {type: "text",  text: "반복 2: 이전 제안 적용 후 업데이트된 렌더와 코드입니다."},
-    {type: "image", source: {type: "base64", data: "새PNG데이터"}},
-    {type: "text",  text: "현재 코드:\n```openscad\n...(개선된 코드)\n```"}
-  ]},
-  {role: "assistant", content: "```json\n{score:8, issues:[], suggested_code:null}\n```"},
-  ...
-]
-```
-
-Claude는 이전 모든 반복의 이미지/코드/평가를 컨텍스트로 보유 → 진행 상황 추적, 정체 감지 가능.
-
-### 평가 응답 JSON 구조
-
-```json
-{
-  "score": 7,
-  "summary": "비율이 정확하지만 상단 디테일 부족",
-  "criteria_scores": {
-    "recognizability": 8,
-    "proportions": 8,
-    "visual_quality": 7,
-    "structural": 6,
-    "code_quality": 7
-  },
-  "issues": [
-    "상단 뚜껑이 완전히 닫히지 않음",
-    "힌지가 본체와 분리되어 보임"
-  ],
-  "suggested_code": "// Full .scad code...\nmodule lighter_body() { ... }",
-  "stop_reason": null
-}
-```
-
----
-
-## 수렴 로직
-
-에이전트는 다음 조건에서 반복을 종료:
-
-| 조건 | 설명 |
-|------|------|
-| `score >= target` AND `suggested_code == null` | 목표 도달 + 잔여 이슈 없음 |
-| `stop_reason == "no_improvement"` | Claude가 더 개선 불가 판단 |
-| 최근 3회 점수 비감소 | 점수 정체 (stagnant) |
-| `iteration >= max_iterations` | 최대 반복 횟수 도달 |
-
-핵심: 점수가 목표에 도달해도 이슈가 남아있으면(`suggested_code != null`) 계속 반복.
-
----
-
-## API 엔드포인트 전체 목록
-
-| 메서드 | 경로 | 입력 | 출력 | 용도 |
+| 메서드 | 경로 | 요청 | 응답 | 용도 |
 |--------|------|------|------|------|
-| GET | `/api/health` | — | `{status}` | 상태 확인 |
-| GET | `/api/files` | — | `{files: [{name, path}]}` | .scad 목록 |
-| GET | `/api/files/status` | — | `{files: {name: mtime}}` | 변경 감지 |
-| POST | `/api/validate` | `{scad_file}` | `{success, message}` | 문법 검사 |
-| POST | `/api/render/png` | `{scad_file, width, height}` | PNG blob | 미리보기 |
-| POST | `/api/render/stl` | `{scad_file, quality}` | STL blob | 3D 모델 |
-| POST | `/api/agent/start` | `{scad_file, mode, description, model, target_score, max_iterations}` | `{session_id, scad_file, mode}` | 세션 생성 |
-| POST | `/api/agent/evaluate` | `{session_id, feedback?}` | `{score, criteria_scores, issues, preview_base64, converged, history, ...}` | 1회 평가 반복 |
-| POST | `/api/agent/apply` | `{session_id}` | `{success, message}` | 코드 적용 |
-| POST | `/api/agent/stop` | `{session_id}` | `{success, history}` | 세션 종료 |
+| GET | `/api/health` | — | `{status: "ok"}` | 상태 확인 |
+| GET | `/api/files` | — | `{files: [{name, path}]}` | data/ 내 .scad 파일 목록 (이름순 정렬) |
+| GET | `/api/files/status` | — | `{files: {name: mtime}}` | 파일별 수정 시각 (폴링용) |
+| POST | `/api/validate` | `{scad_file}` | `{success, message}` | 구문 검사 |
+| POST | `/api/render/png` | `{scad_file, width?:1024, height?:768}` | PNG blob | QUALITY_PNG 오버라이드 적용 |
+| POST | `/api/render/stl` | `{scad_file, quality?:"preview"}` | STL blob | `"preview"` → QUALITY_3D, `"export"` → QUALITY_EXPORT |
+
+**정적 파일 서빙**: `web/dist/` 존재 시 `StaticFiles(directory, html=True)`로 `/*`에 마운트. API 라우트(`/api/*`)가 우선.
 
 ---
 
 ## MCP Tool 목록
 
-| Tool | 입력 | 출력 | 용도 |
-|------|------|------|------|
-| `render_preview` | `scad_file, width?, height?` | base64 PNG + 텍스트 | 미리보기 렌더링 |
-| `render_stl` | `scad_file, output_path?` | 파일 경로 + 메타 | STL 렌더링 |
-| `validate_scad` | `scad_file` | 성공/실패 + stderr | 문법 검증 |
+| Tool | 시그니처 | 반환 | 용도 |
+|------|----------|------|------|
+| `render_preview` | `(scad_file, width?=1024, height?=768)` | `[{type:"image", data:base64, mimeType}, {type:"text", ...}]` | PNG 미리보기. temp 파일 자동 삭제. |
+| `render_stl` | `(scad_file, output_path?="")` | `str` (성공: 경로+크기, 실패: 에러) | STL 렌더링 |
+| `validate_scad` | `(scad_file)` | `str` (성공: "Syntax is valid." + 경고, 실패: 에러) | 구문 검증. WARNING 라인만 필터링 표시. |
 
 ---
 
@@ -403,35 +424,80 @@ Claude는 이전 모든 반복의 이미지/코드/평가를 컨텍스트로 보
 
 | 명령 | 모듈 | 설명 |
 |------|------|------|
-| `openscad-web` | `web_api:main` | FastAPI 서버 (port 8000) |
-| `openscad-mcp` | `server:main` | MCP stdio 서버 |
-| `openscad-agent review <file>` | `design_agent:main` | 기존 파일 리뷰 |
-| `openscad-agent generate "<설명>"` | `design_agent:main` | 새 디자인 생성 |
-
-CLI 옵션: `--auto`, `--dry-run`, `-n`, `-t`, `-m`, `-o`
+| `openscad-web` | `web_api:main` | FastAPI 서버 (port 8000, `uvicorn.run()`) |
+| `openscad-mcp` | `server:main` | MCP stdio 서버 (`mcp.run(transport="stdio")`) |
 
 ---
 
-## 품질 프리셋
+## run.sh 명령
 
-| 용도 | `num_steps` | `$fn` | 소요 시간 | 사용처 |
-|------|-------------|-------|-----------|--------|
-| 3D View (STL 미리보기) | 30 | 36 | ~5초 | 웹 인터랙티브 뷰어 |
-| 에이전트 평가 | 50 | 60 | ~10초 | design_agent 반복 루프 |
-| PNG 미리보기 | 100 | 60 | ~30초 | Preview PNG 버튼 |
-| STL 최종 출력 | 100 | 90 | ~1-2분 | Download STL 버튼 |
+| 명령 | 동작 |
+|------|------|
+| `setup` | venv 생성, `pip install -e .`, `npm install`, OpenSCAD AppImage 다운로드 |
+| `start` | **프로덕션**: `npm run build` → FastAPI 단일 서버(8000) 시작. `web/dist/`에서 정적 파일 서빙. |
+| `dev` | **개발**: FastAPI(8000) + Vite dev server(3000, HMR) 동시 시작. Vite가 `/api`를 8000으로 프록시. |
+| `stop` | PID 파일 기반 종료 (`kill_tree`) → 포트 8000/3000 폴백 정리 |
+| `restart` | `stop` → `start` |
+| `status` | PID 파일의 프로세스 생존 확인 |
+| `build` | `npm run build` → `web/dist/` 생성 |
+
+**런타임 파일**: `.run/pids` (프로세스 PID), `.run/backend.log`, `.run/frontend.log`
+
+---
+
+## Vite 개발 서버 설정
+
+**파일**: `web/vite.config.js`
+
+| 항목 | 값 |
+|------|-----|
+| 호스트 | `127.0.0.1` |
+| 포트 | `3000` |
+| 프록시 | `/api` → `http://localhost:8000` (`changeOrigin: true`) |
+| 플러그인 | `@vitejs/plugin-react` |
+
+---
+
+## 환경 변수
+
+| 변수 | 기본값 | 역할 |
+|------|--------|------|
+| `OPENSCAD_PATH` | `bin/openscad` | OpenSCAD 실행 파일 경로 |
+| `OPENSCAD_TIMEOUT` | `600` | 렌더링 타임아웃 (초) |
+
+---
+
+## 의존성
+
+### Python (`pyproject.toml`)
+
+| 패키지 | 버전 | 역할 |
+|--------|------|------|
+| `mcp[cli]` | — | MCP 프로토콜 서버 (FastMCP) |
+| `fastapi` | ≥0.115.0 | REST API 프레임워크 |
+| `uvicorn[standard]` | ≥0.30.0 | ASGI 서버 |
+
+### Node.js (`web/package.json`)
+
+| 패키지 | 버전 | 역할 |
+|--------|------|------|
+| `react` | ^19.2.0 | UI 프레임워크 |
+| `react-dom` | ^19.2.0 | React DOM 렌더러 |
+| `three` | ^0.183.1 | 3D 렌더링 (STLLoader, OrbitControls) |
+| `vite` | ^7.3.1 | 빌드/개발 서버 |
+| `@vitejs/plugin-react` | ^5.1.1 | React HMR/JSX 지원 |
 
 ---
 
 ## 파일 수명 주기
 
-| 경로 | 생성자 | 수명 |
-|------|--------|------|
-| `data/*.scad` | 사용자 / design_agent | 영구 |
+| 경로 패턴 | 생성자 | 수명 |
+|-----------|--------|------|
+| `data/*.scad` | 사용자 | 영구 |
 | `data/*_preview.png` | renderer.py | 선택적 보관 |
 | `data/*.stl` | renderer.py | 선택적 보관 |
-| `/tmp/openscad_preview_*.png` | renderer.py | 평가 후 즉시 삭제 |
-| `/tmp/openscad_web_*.stl` | web_api.py | HTTP 전송 후 삭제 |
-| `*.scad.tmp` | design_agent | 검증 후 rename 또는 삭제 |
-| `.run/*.pid, .run/*.log` | run.sh | 서버 종료 시 삭제 |
-| `.env` | 사용자 | 영구 (gitignored) |
+| `/tmp/openscad_preview_*.png` | renderer.py (render_to_png) | HTTP 전송 후 BackgroundTask로 삭제 |
+| `/tmp/openscad_web_*.stl` | web_api.py (api_render_stl) | HTTP 전송 후 BackgroundTask로 삭제 |
+| `/tmp/openscad_validate_*.stl` | renderer.py (validate) | finally 블록에서 즉시 삭제 |
+| `.run/pids` | run.sh | 서버 종료 시 삭제 |
+| `.run/*.log` | run.sh | 수동 삭제 |

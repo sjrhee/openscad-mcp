@@ -1,6 +1,6 @@
 #!/bin/bash
 # OpenSCAD MCP - Project management script
-# Usage: ./run.sh {setup|start|stop|restart|status|build}
+# Usage: ./run.sh {setup|start|stop|dev|restart|status|build}
 
 set -e
 
@@ -41,7 +41,6 @@ mkdir_run() {
 # Kill a process and all its children
 kill_tree() {
     local pid=$1
-    # Kill children first
     local children
     children=$(pgrep -P "$pid" 2>/dev/null) || true
     for child in $children; do
@@ -113,7 +112,7 @@ WRAPPER
     ok "Setup complete!"
 }
 
-# ── start ────────────────────────────────────────────────
+# ── start (production: build + single server) ────────────
 
 cmd_start() {
     ensure_venv
@@ -134,6 +133,54 @@ cmd_start() {
         fi
     fi
 
+    # Build frontend
+    info "Building frontend..."
+    cd "$ROOT/web" && npm run build --silent 2>&1
+    cd "$ROOT"
+    ok "Frontend built → web/dist/"
+
+    # Start backend (serves both API and static files)
+    info "Starting server (port 8000)..."
+    "$VENV/bin/python" -m uvicorn src.openscad_mcp.web_api:app \
+        --host 0.0.0.0 --port 8000 \
+        > "$BACKEND_LOG" 2>&1 &
+    local backend_pid=$!
+
+    # Save PID
+    echo "backend $backend_pid" > "$PID_FILE"
+
+    sleep 1
+
+    if kill -0 "$backend_pid" 2>/dev/null; then
+        ok "Server started (PID $backend_pid) → http://localhost:8000"
+        echo ""
+        ok "Ready. Open http://localhost:8000 in your browser."
+    else
+        err "Server failed to start. Check $BACKEND_LOG"
+    fi
+}
+
+# ── dev (development: Vite dev server + backend) ─────────
+
+cmd_dev() {
+    ensure_venv
+    ensure_nvm
+    mkdir_run
+
+    # Check if already running
+    if [ -f "$PID_FILE" ]; then
+        local running=0
+        while read -r name pid; do
+            if kill -0 "$pid" 2>/dev/null; then
+                running=1
+            fi
+        done < "$PID_FILE"
+        if [ "$running" -eq 1 ]; then
+            err "Servers already running. Use './run.sh stop' first."
+            exit 1
+        fi
+    fi
+
     # Start backend
     info "Starting backend (port 8000)..."
     "$VENV/bin/python" -m uvicorn src.openscad_mcp.web_api:app \
@@ -141,10 +188,10 @@ cmd_start() {
         > "$BACKEND_LOG" 2>&1 &
     local backend_pid=$!
 
-    # Start frontend
-    info "Starting frontend (port 3000)..."
+    # Start Vite dev server
+    info "Starting Vite dev server (port 3000)..."
     cd "$ROOT/web"
-    npx vite --port 3000 > "$FRONTEND_LOG" 2>&1 &
+    npx vite --port 3000 > "$FRONTEND_LOG" 2>&1 < /dev/null &
     local frontend_pid=$!
     cd "$ROOT"
 
@@ -154,7 +201,6 @@ cmd_start() {
 
     sleep 1
 
-    # Verify they started
     local ok_count=0
     if kill -0 "$backend_pid" 2>/dev/null; then
         ok "Backend  started (PID $backend_pid) → http://localhost:8000"
@@ -171,7 +217,7 @@ cmd_start() {
 
     if [ "$ok_count" -eq 2 ]; then
         echo ""
-        ok "All servers running. Logs in $RUN_DIR/"
+        ok "Dev mode running. Open http://localhost:3000 (HMR enabled)."
     fi
 }
 
@@ -192,21 +238,15 @@ cmd_stop() {
     fi
 
     # 2) Fallback: kill anything still on ports 8000/3000
-    local remaining=0
     if lsof -ti :8000 >/dev/null 2>&1; then
         kill_port 8000
         ok "Stopped leftover process on port 8000"
-        remaining=1
     fi
     if lsof -ti :3000 >/dev/null 2>&1; then
         kill_port 3000
         ok "Stopped leftover process on port 3000"
-        remaining=1
     fi
 
-    if [ "$remaining" -eq 0 ] && [ ! -f "$PID_FILE" ]; then
-        : # already printed per-process messages above
-    fi
     ok "All servers stopped."
 }
 
@@ -250,6 +290,7 @@ case "${1:-}" in
     setup)   cmd_setup   ;;
     start)   cmd_start   ;;
     stop)    cmd_stop     ;;
+    dev)     cmd_dev      ;;
     status)  cmd_status   ;;
     build)   cmd_build    ;;
     restart) cmd_restart  ;;
@@ -260,8 +301,9 @@ case "${1:-}" in
         echo ""
         echo "Commands:"
         echo "  setup     Create venv, install packages, download OpenSCAD"
-        echo "  start     Start backend (8000) and frontend (3000)"
+        echo "  start     Build frontend + start server (port 8000)"
         echo "  stop      Stop all servers"
+        echo "  dev       Start backend (8000) + Vite dev server (3000)"
         echo "  restart   Stop then start"
         echo "  status    Check if servers are running"
         echo "  build     Build frontend for production"

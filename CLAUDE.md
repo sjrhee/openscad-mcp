@@ -4,10 +4,12 @@
 
 OpenSCAD 3D 모델을 생성·렌더링·웹으로 미리보기하는 도구.
 
-- **백엔드**: FastAPI (port 8000) — OpenSCAD CLI 래퍼
-- **프론트엔드**: Vite + React (port 3000) — 3D 웹 뷰어 (Three.js)
+- **서버**: FastAPI (port 8000) — REST API + React 정적 파일 서빙
+- **프론트엔드**: React + Three.js — 3D 웹 뷰어
 - **Python 환경**: `.venv/` (프로젝트 루트)
 - **관리 스크립트**: `run.sh` — 설치/시작/종료/빌드 통합
+- **프로덕션**: `./run.sh start` → 단일 서버(8000)
+- **개발**: `./run.sh dev` → FastAPI(8000) + Vite HMR(3000)
 
 ---
 
@@ -26,12 +28,16 @@ openscad-mcp/
 │   └── lib/                     # 번들된 OpenGL 라이브러리
 ├── src/openscad_mcp/
 │   ├── renderer.py              # OpenSCAD CLI 래퍼 (PNG/STL 렌더링)
-│   ├── web_api.py               # FastAPI 서버
+│   ├── web_api.py               # FastAPI 서버 (REST API + 정적 파일 서빙)
 │   └── server.py                # MCP 서버
-├── web/                         # Vite + React 프론트엔드
+├── web/                         # React 프론트엔드
+│   ├── vite.config.js           # Vite 설정 (dev 프록시 포함)
+│   ├── dist/                    # 프로덕션 빌드 출력
 │   └── src/
 │       ├── App.jsx              # 메인 UI (파일 드롭다운, 버튼)
-│       └── StlViewer.jsx        # Three.js 3D 뷰어 (스케일 바, 바운딩 박스)
+│       ├── StlViewer.jsx        # Three.js 3D 뷰어 (스케일 바, 바운딩 박스)
+│       ├── api/openscad.js      # HTTP 클라이언트 (API 호출 래퍼)
+│       └── hooks/useFileWatcher.js  # 파일 변경 감지 (2초 폴링)
 ├── .run/                        # 런타임 (PID, 로그) — gitignored
 └── .claude/launch.json          # MCP 서버 실행 설정
 ```
@@ -44,8 +50,9 @@ openscad-mcp/
 
 ```bash
 ./run.sh setup     # venv 생성, 패키지 설치, OpenSCAD 다운로드
-./run.sh start     # 백엔드(8000) + 프론트엔드(3000) 시작
+./run.sh start     # 프론트엔드 빌드 + 서버 시작 (port 8000)
 ./run.sh stop      # 모든 서버 종료
+./run.sh dev       # 개발 모드: 백엔드(8000) + Vite HMR(3000)
 ./run.sh restart   # 재시작
 ./run.sh status    # 서버 상태 확인
 ./run.sh build     # 프론트엔드 프로덕션 빌드
@@ -71,7 +78,7 @@ OpenSCAD 실행 파일: `bin/openscad` (프로젝트 내 AppImage + 번들 라�
 1. 표현이 부족하거나 모호한 부분은 **보충 질문**을 해서 요구사항을 명확히 한다
    - 예: 치수, 두께, 각도, 단면 형상, 연결 방식 등
 2. 요구사항이 확정되면 `.scad` 파일을 `data/`에 생성한다
-3. 웹 뷰어(localhost:3000)에서 3D로 확인할 수 있도록 안내한다
+3. 웹 뷰어(localhost:8000)에서 3D로 확인할 수 있도록 안내한다
 
 ---
 
@@ -115,7 +122,7 @@ print(render_to_stl(scad, 'data/파일명.stl'))
 
 ### 3. 웹 뷰어로 3D 확인
 
-`./run.sh start`로 서버 실행 후 `http://localhost:3000` 접속.
+`./run.sh start`로 서버 실행 후 `http://localhost:8000` 접속.
 
 웹 UI에서:
 1. 드롭다운에서 `.scad` 파일 선택 (새 파일은 드롭다운 클릭 시 자동 갱신)
@@ -145,6 +152,14 @@ print(render_to_stl(scad, 'data/파일명.stl'))
 | `50_to_100_transition_pipe.scad` | 원형 Ø50mm → 원형 Ø100mm, 양끝 10mm 평탄, 길이 150mm |
 | `90deg_bent_pipe_30mm.scad` | Ø30mm 파이프, 90도 곡관, 벽 3mm, 곡률 60mm |
 | `simple_suv.scad` | 심플 SUV 자동차 모델 (100mm 스케일) |
+| `simple_car_basic.scad` | 심플 세단 모델 |
+| `simple_truck_basic.scad` | 심플 트럭 모델 |
+| `simple_laptop.scad` | 노트북 모델 |
+| `simple_game_controller.scad` | 게임 컨트롤러 모델 |
+| `simple_zippo_lighter.scad` | 지포 라이터 모델 |
+| `agent_zippo_lighter.scad` | 에이전트 생성 지포 라이터 v1 |
+| `agent_zippo_lighter_v2.scad` | 에이전트 생성 지포 라이터 v2 |
+| `agent_zippo_lighter_v3.scad` | 에이전트 생성 지포 라이터 v3 |
 
 ---
 
@@ -154,6 +169,7 @@ print(render_to_stl(scad, 'data/파일명.stl'))
 |--------|------|------|
 | GET | `/api/health` | 서버 상태 확인 |
 | GET | `/api/files` | `data/` 내 .scad 파일 목록 |
+| GET | `/api/files/status` | 파일별 수정 시각 (폴링용 변경 감지) |
 | POST | `/api/validate` | .scad 문법 검사 |
 | POST | `/api/render/png` | PNG 렌더링 |
 | POST | `/api/render/stl` | STL 렌더링 (`quality`: `preview` / `export`) |

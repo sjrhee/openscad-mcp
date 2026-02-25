@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { validateScad, renderPng } from './api/openscad'
 import StlViewer from './StlViewer'
 import './App.css'
@@ -7,6 +7,7 @@ const API_BASE = '/api'
 
 function App() {
   const [scadFile, setScadFile] = useState('')
+  const [fileList, setFileList] = useState([])
   const [previewUrl, setPreviewUrl] = useState(null)
   const [stlUrl, setStlUrl] = useState(null)
   const [viewMode, setViewMode] = useState('png')
@@ -14,6 +15,15 @@ function App() {
   const [loading, setLoading] = useState(null)
   const prevUrlRef = useRef(null)
   const prevStlRef = useRef(null)
+
+  function refreshFiles() {
+    fetch(`${API_BASE}/files`)
+      .then(r => r.json())
+      .then(data => setFileList(data.files || []))
+      .catch(() => {})
+  }
+
+  useEffect(() => { refreshFiles() }, [])
 
   const busy = loading !== null
 
@@ -117,13 +127,16 @@ function App() {
       <h1>OpenSCAD Viewer</h1>
 
       <div className="input-group">
-        <input
-          type="text"
-          placeholder=".scad file path (e.g. D:\Work\model.scad)"
+        <select
           value={scadFile}
           onChange={(e) => setScadFile(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handlePreview()}
-        />
+          onFocus={refreshFiles}
+        >
+          <option value="">-- Select a .scad file --</option>
+          {fileList.map(f => (
+            <option key={f.path} value={f.path}>{f.name}</option>
+          ))}
+        </select>
       </div>
 
       <div className="actions">

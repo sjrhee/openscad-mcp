@@ -22,5 +22,9 @@ data/*.png
 .DS_Store
 Thumbs.db
 
+# OpenSCAD binaries and libraries (large files)
+bin/OpenSCAD-x86_64.AppImage
+bin/lib/
+
 # Local Claude settings
 .claude/settings.local.json

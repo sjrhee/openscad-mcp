@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 OPENSCAD_EXE = os.environ.get(
-    "OPENSCAD_PATH", r"C:\Program Files\OpenSCAD\openscad.exe"
+    "OPENSCAD_PATH",
+    str(Path(__file__).resolve().parent.parent.parent / "bin" / "openscad"),
 )
 RENDER_TIMEOUT = int(os.environ.get("OPENSCAD_TIMEOUT", "600"))
 

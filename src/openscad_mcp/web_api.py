@@ -15,6 +15,8 @@ from openscad_mcp.renderer import render_to_png, render_to_stl, validate
 
 app = FastAPI(title="OpenSCAD Web API", version="0.1.0")
 
+DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -23,8 +25,9 @@ app.add_middleware(
 )
 
 # Quality presets: OpenSCAD variable overrides
-QUALITY_PREVIEW = {"num_steps": 30, "$fn": 36}
-QUALITY_EXPORT = {"num_steps": 100, "$fn": 90}
+QUALITY_3D: dict[str, object] = {"num_steps": 30, "$fn": 36}       # 3D View (STL preview)
+QUALITY_PNG: dict[str, object] = {"num_steps": 100, "$fn": 60}      # PNG preview
+QUALITY_EXPORT: dict[str, object] = {"num_steps": 100, "$fn": 90}   # STL download
 
 
 class ValidateRequest(BaseModel):
@@ -47,6 +50,21 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/files")
+async def list_files():
+    """List .scad files in the data/ directory."""
+    if not DATA_DIR.is_dir():
+        return {"files": []}
+    files = sorted(
+        [
+            {"name": f.name, "path": str(f)}
+            for f in DATA_DIR.glob("*.scad")
+        ],
+        key=lambda x: x["name"],
+    )
+    return {"files": files}
+
+
 @app.post("/api/validate")
 async def api_validate(req: ValidateRequest):
     result = await asyncio.to_thread(validate, req.scad_file)
@@ -57,7 +75,7 @@ async def api_validate(req: ValidateRequest):
 async def api_render_png(req: RenderPngRequest):
     result = await asyncio.to_thread(
         render_to_png, req.scad_file, None, req.width, req.height,
-        overrides=QUALITY_PREVIEW,
+        overrides=QUALITY_PNG,
     )
     if not result.success or not result.output_path:
         raise HTTPException(status_code=400, detail=result.stderr)
@@ -73,7 +91,7 @@ async def api_render_png(req: RenderPngRequest):
 
 @app.post("/api/render/stl")
 async def api_render_stl(req: RenderStlRequest):
-    overrides = QUALITY_EXPORT if req.quality == "export" else QUALITY_PREVIEW
+    overrides = QUALITY_EXPORT if req.quality == "export" else QUALITY_3D
 
     tmp = tempfile.NamedTemporaryFile(
         suffix=".stl", prefix="openscad_web_", delete=False

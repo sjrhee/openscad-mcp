@@ -44,7 +44,17 @@ python -m venv .venv
 cd web && npm install
 ```
 
-OpenSCAD 실행 파일 위치: `C:\Program Files\OpenSCAD\openscad.exe`
+OpenSCAD 실행 파일 위치: `bin/openscad` (프로젝트 내 AppImage)
+
+---
+
+## 디자인 작업 워크플로우
+
+사용자가 3D 디자인을 설명하면:
+1. 표현이 부족하거나 모호한 부분은 **보충 질문**을 해서 요구사항을 명확히 한다
+   - 예: 치수, 두께, 각도, 단면 형상, 연결 방식 등
+2. 요구사항이 확정되면 `.scad` 파일을 `data/`에 생성한다
+3. 웹 뷰어(localhost:3000)에서 3D로 확인할 수 있도록 안내한다
 
 ---
 

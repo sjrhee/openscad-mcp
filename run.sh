@@ -38,6 +38,28 @@ mkdir_run() {
     mkdir -p "$RUN_DIR"
 }
 
+# Kill a process and all its children
+kill_tree() {
+    local pid=$1
+    # Kill children first
+    local children
+    children=$(pgrep -P "$pid" 2>/dev/null) || true
+    for child in $children; do
+        kill_tree "$child"
+    done
+    kill "$pid" 2>/dev/null || true
+}
+
+# Kill any process listening on a given port
+kill_port() {
+    local port=$1
+    local pids
+    pids=$(lsof -ti :"$port" 2>/dev/null) || true
+    for pid in $pids; do
+        kill "$pid" 2>/dev/null || true
+    done
+}
+
 # ── setup ────────────────────────────────────────────────
 
 cmd_setup() {
@@ -156,21 +178,35 @@ cmd_start() {
 # ── stop ─────────────────────────────────────────────────
 
 cmd_stop() {
-    if [ ! -f "$PID_FILE" ]; then
-        info "No PID file found. Nothing to stop."
-        return
+    # 1) Kill by PID file (with child processes)
+    if [ -f "$PID_FILE" ]; then
+        while read -r name pid; do
+            if kill -0 "$pid" 2>/dev/null; then
+                kill_tree "$pid"
+                ok "Stopped $name (PID $pid)"
+            else
+                info "$name (PID $pid) already stopped"
+            fi
+        done < "$PID_FILE"
+        rm -f "$PID_FILE"
     fi
 
-    while read -r name pid; do
-        if kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null
-            ok "Stopped $name (PID $pid)"
-        else
-            info "$name (PID $pid) already stopped"
-        fi
-    done < "$PID_FILE"
+    # 2) Fallback: kill anything still on ports 8000/3000
+    local remaining=0
+    if lsof -ti :8000 >/dev/null 2>&1; then
+        kill_port 8000
+        ok "Stopped leftover process on port 8000"
+        remaining=1
+    fi
+    if lsof -ti :3000 >/dev/null 2>&1; then
+        kill_port 3000
+        ok "Stopped leftover process on port 3000"
+        remaining=1
+    fi
 
-    rm -f "$PID_FILE"
+    if [ "$remaining" -eq 0 ] && [ ! -f "$PID_FILE" ]; then
+        : # already printed per-process messages above
+    fi
     ok "All servers stopped."
 }
 
